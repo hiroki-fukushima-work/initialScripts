@@ -90,9 +90,65 @@ function Ensure-WinGet {
     return $false
 }
 
+# ---------------------------
+# ZIP インストーラ
+# ---------------------------
+function Install-Apps-With-Zip {
+    param(
+        [Parameter(Mandatory=$true)][hashtable]$ZipMap,
+        [Parameter(Mandatory=$true)][string]$ToolsDir,
+        [switch]$DryRun
+    )
+
+    New-Item -ItemType Directory -Force $ToolsDir | Out-Null
+
+    foreach ($name in $ZipMap.Keys) {
+        $item = $ZipMap[$name]
+
+        $zipUrl     = $item.ZipPath
+        $folderName = $item.FolderName
+        $exeName    = $item.ExeName
+
+        $installDir = Join-Path $ToolsDir $folderName
+        $zipFile    = Join-Path $env:TEMP "$folderName.zip"
+
+        Write-Log INFO "ZIP check: $name"
+
+        if ((Test-Path $installDir) -and ($exeName -and (Test-Path (Join-Path $installDir $exeName)))) {
+            Write-Log INFO "ZIP Installed: $name - skip"
+            continue
+        }
+
+        if ($DryRun) {
+            Write-Log INFO "[DryRun] Download $zipUrl -> $zipFile"
+            Write-Log INFO "[DryRun] Expand $zipFile -> $installDir"
+            continue
+        }
+
+        try {
+            Write-Log INFO "ZIP download: $name"
+            Invoke-WebRequest -Uri $zipUrl -OutFile $zipFile -UseBasicParsing
+
+            if (Test-Path $installDir) {
+                Write-Log INFO "ZIP cleanup existing folder: $installDir"
+                Remove-Item $installDir -Recurse -Force
+            }
+
+            Write-Log INFO "ZIP extract: $name"
+            Expand-Archive -Path $zipFile -DestinationPath $installDir -Force
+
+            Remove-Item $zipFile -Force -ErrorAction SilentlyContinue
+
+            Write-Log INFO "ZIP install done: $name"
+        }
+        catch {
+            Write-Log WARN "ZIP install failed: $name - $($_.Exception.Message)"
+        }
+    }
+}
 
 # ---------------------------
-# WinGet インストーラ（進捗ログ強化版）
+# WinGet インストーラ
 # ---------------------------
 function Install-Apps-With-WinGet {
     param(
@@ -169,7 +225,16 @@ function Install-Apps-With-WinGet {
         }
 
         # 3) ここまで来たら「未インストール」とみなして install へ
-        Write-Log INFO ("[{0}/{1}] not-installed, go install: {2}" -f $index, $total, $name)
+        #Write-Log INFO ("[{0}/{1}] not-installed, go install: {2}" -f $index, $total, $name)
+        
+		& winget list --id $id --exact @sourceArg @WG_ACCEPT @WG_NONINT | Out-Null
+		$listCode = $LASTEXITCODE
+
+		if ($listCode -eq 0) {
+		    Write-Log INFO ("[{0}/{1}] detected=installed: {2} -> skip" -f $index, $total, $name)
+		    continue
+		}
+        
 
         # --- install 実行前ログ ---
         $args = @('install','--id',$id,'--exact') + $WG_SILENT + $WG_ACCEPT + $WG_NONINT + $scopeArg + $proxyArg + $sourceArg + $wgLogArg
@@ -286,26 +351,41 @@ if (-not (Ensure-WinGet)) {
 $AppMap = @{
     '7-Zip'                    = '7zip.7zip'
     'Eclipse Temurin 17'       = 'EclipseAdoptium.Temurin.17.JDK'   # Java 17
-    'Python 3'                 = 'Python.Python.3'
-    'Ruby'                     = 'RubyInstallerTeam.Ruby'
+    'Python 3'                 = 'Python.Python.3.13'
+    'Ruby'                     = 'RubyInstallerTeam.RubyWithDevKit.3.4'
     'Strawberry Perl'          = 'StrawberryPerl.StrawberryPerl'
     'Git'                      = 'Git.Git'
     'TortoiseGit'              = 'TortoiseGit.TortoiseGit'
     'Graphviz'                 = 'Graphviz.Graphviz'
     'Visual Studio Code'       = 'Microsoft.VisualStudioCode'        # scope 指定なし（デフォルト）
     'WinMerge'                 = 'WinMerge.WinMerge'
-    'Tera Term'                = 'TeraTermProject.TeraTerm'
+    'Tera Term'                = 'TeraTermProject.teraterm'
     'CMake'                    = 'Kitware.CMake'
     'VS 2022 Build Tools'      = 'Microsoft.VisualStudio.2022.BuildTools'
     'draw.io Desktop'          = 'JGraph.Draw'
     'Sakura Editor'            = 'sakura-editor.sakura'
 }
 
+# Zip Installer
+$toolsDir = "C:\tools"
+
+$ZipMap = @{
+    "A5:SQL Mk-2" = @{
+        ZipPath    = "https://a5m2.mmatsubara.com/downloads/A5M2.zip"
+        FolderName = "A5M2"
+        ExeName    = "A5M2.exe"
+    }
+}
+
+New-Item -ItemType Directory -Force $toolsDir | Out-Null
+
+Install-Apps-With-Zip -ZipMap $ZipMap -ToolsDir $toolsDir -DryRun:$DryRun
+
 # 今回は override 未使用（デフォルト動作）
 $OverrideMap = @{}
 
 Write-Log INFO "Wingetでインストールするアプリ"
-Install-Apps-With-WinGet -AppMap $AppMap -OverrideMap $OverrideMap -Scope $Scope -DryRun:$DryRun -Proxy $Proxy
+Install-Apps-With-WinGet -AppMap $AppMap -OverrideMap $OverrideMap -Scope $Scope -DryRun:$DryRun -Proxy $Proxy -UseWingetSourceOnly
 
 # RubyGems（必要に応じて）
 if (-not $NoRubyGems) {
@@ -313,6 +393,8 @@ if (-not $NoRubyGems) {
     $RubyGems = @('asciidoctor','asciidoctor-pdf','asciidoctor-pdf-cjk','asciidoctor-diagram','coderay')
     Install-RubyGems -Gems $RubyGems -DryRun:$DryRun
 }
+
+Write-Log INFO "ZIPファイルをダウンロードしてインストールするアプリ"
 
 # VS Code 拡張（必要に応じて）
 if (-not $NoVSCodeExtensions) {
