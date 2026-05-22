@@ -226,14 +226,18 @@ function Install-Apps-With-WinGet {
 
         # 3) ここまで来たら「未インストール」とみなして install へ
         #Write-Log INFO ("[{0}/{1}] not-installed, go install: {2}" -f $index, $total, $name)
-        
-		& winget list --id $id --exact @sourceArg @WG_ACCEPT @WG_NONINT | Out-Null
-		$listCode = $LASTEXITCODE
 
-		if ($listCode -eq 0) {
-		    Write-Log INFO ("[{0}/{1}] detected=installed: {2} -> skip" -f $index, $total, $name)
-		    continue
-		}
+        $already = & winget list --id $id --exact `
+                    --disable-interactivity `
+                    --accept-source-agreements --accept-package-agreements `
+                    @sourceArg 2>$null | Out-String
+
+        if ($already -match [regex]::Escape($id)) {
+            Write-Log INFO ("[{0}/{1}] detected=installed: {2} -> skip" -f $index, $total, $name)
+            continue
+        }
+
+        Write-Log INFO ("[{0}/{1}] not-installed, go install: {2}" -f $index, $total, $name)
         
 
         # --- install 実行前ログ ---
@@ -364,6 +368,7 @@ $AppMap = @{
     'VS 2022 Build Tools'      = 'Microsoft.VisualStudio.2022.BuildTools'
     'draw.io Desktop'          = 'JGraph.Draw'
     'Sakura Editor'            = 'sakura-editor.sakura'
+    'inkscape'                 = 'Inkscape.Inkscape'
 }
 
 # Zip Installer
@@ -413,7 +418,7 @@ if (-not $NoVSCodeExtensions) {
         'ms-vscode.cpptools-extension-pack',
         # OpenAPI関連
         'Redocly.openapi-vs-code',
-        '42Crunch.vscode-openapi',
+        '42Crunch.vscode-openapi'
     )
     Install-VSCodeExtensions -Extensions $VSCodeExtensions -DryRun:$DryRun
 }
