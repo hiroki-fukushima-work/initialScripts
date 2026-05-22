@@ -410,7 +410,10 @@ if (-not $NoVSCodeExtensions) {
         'ms-vscode.cpptools',
         'ms-vscode.cmake-tools',
         'josetr.cmake-language-support-vscode',
-        'ms-vscode.cpptools-extension-pack'
+        'ms-vscode.cpptools-extension-pack',
+        # OpenAPI関連
+        'Redocly.openapi-vs-code',
+        '42Crunch.vscode-openapi',
     )
     Install-VSCodeExtensions -Extensions $VSCodeExtensions -DryRun:$DryRun
 }
