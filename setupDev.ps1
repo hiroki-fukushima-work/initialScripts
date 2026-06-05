@@ -370,6 +370,7 @@ $AppMap = @{
     'Sakura Editor'            = 'sakura-editor.sakura'
     'inkscape'                 = 'Inkscape.Inkscape'
     'SQLite'                   = 'SQLite.SQLite'
+    'Nodist'                   = 'Nodist.Nodist'
 }
 
 # Zip Installer
