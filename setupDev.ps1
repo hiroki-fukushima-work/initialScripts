@@ -369,6 +369,7 @@ $AppMap = @{
     'draw.io Desktop'          = 'JGraph.Draw'
     'Sakura Editor'            = 'sakura-editor.sakura'
     'inkscape'                 = 'Inkscape.Inkscape'
+    'SQLite'                   = 'SQLite.SQLite'
 }
 
 # Zip Installer
