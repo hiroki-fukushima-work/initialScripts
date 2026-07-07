@@ -420,7 +420,12 @@ if (-not $NoVSCodeExtensions) {
         'ms-vscode.cpptools-extension-pack',
         # OpenAPI関連
         'Redocly.openapi-vs-code',
-        '42Crunch.vscode-openapi'
+        '42Crunch.vscode-openapi',
+        'redhat.vscode-yaml',
+        'mhutchie.git-graph',
+        'eamodio.gitlens',
+        'GitHub.vscode-pull-request-github',
+        'esbenp.prettier-vscode'
     )
     Install-VSCodeExtensions -Extensions $VSCodeExtensions -DryRun:$DryRun
 }
