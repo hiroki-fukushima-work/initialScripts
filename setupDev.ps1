@@ -12,7 +12,7 @@
 [CmdletBinding()]
 param(
     # Machine or User（規定値：Machine。VS Code は scope 指定なし＝アプリ既定の挙動）
-    [ValidateSet('Machine','User')]
+    [ValidateSet('Machine', 'User')]
     [string]$Scope = 'Machine',
 
     # 何をするかの予行演習（出力のみ／実行しない）
@@ -31,21 +31,38 @@ param(
     [string]$Proxy
 )
 
+# 管理者権限チェック
+$isAdmin = (
+    New-Object Security.Principal.WindowsPrincipal(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    )
+).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
+
+# 管理者でなければ再起動
+if (-not $isAdmin) {
+    Start-Process powershell `
+        -Verb RunAs `
+        -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    exit
+}
+
 # ---------------------------
 # ユーティリティ
 # ---------------------------
 function Write-Log {
     param(
-        [Parameter(Mandatory=$true)][ValidateSet('INFO','WARN','ERROR','DEBUG')]
+        [Parameter(Mandatory = $true)][ValidateSet('INFO', 'WARN', 'ERROR', 'DEBUG')]
         [string]$Level,
-        [Parameter(Mandatory=$true)]
+        [Parameter(Mandatory = $true)]
         [string]$Message
     )
     $ts = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')
     $line = "[$ts][$Level] $Message"
     switch ($Level) {
-        'INFO'  { Write-Host $line -ForegroundColor Cyan }
-        'WARN'  { Write-Warning $Message }
+        'INFO' { Write-Host $line -ForegroundColor Cyan }
+        'WARN' { Write-Warning $Message }
         'ERROR' { Write-Error $Message }
         'DEBUG' { Write-Verbose $Message }
     }
@@ -53,12 +70,12 @@ function Write-Log {
 
 function Test-Admin {
     $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $p  = New-Object Security.Principal.WindowsPrincipal($id)
+    $p = New-Object Security.Principal.WindowsPrincipal($id)
     return $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
 function Test-CommandExists {
-    param([Parameter(Mandatory=$true)][string]$Name)
+    param([Parameter(Mandatory = $true)][string]$Name)
     $null -ne (Get-Command $Name -ErrorAction SilentlyContinue)
 }
 
@@ -75,8 +92,8 @@ function Get-CodeCmd {
 
 # PATH 再読込（ユーザーさんの既存方針を踏襲）
 function Refresh-Path {
-    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH','Machine') + ';' +
-                [System.Environment]::GetEnvironmentVariable('PATH','User')
+    $env:PATH = [System.Environment]::GetEnvironmentVariable('PATH', 'Machine') + ';' +
+    [System.Environment]::GetEnvironmentVariable('PATH', 'User')
 }
 
 # ---------------------------
@@ -95,8 +112,8 @@ function Ensure-WinGet {
 # ---------------------------
 function Install-Apps-With-Zip {
     param(
-        [Parameter(Mandatory=$true)][hashtable]$ZipMap,
-        [Parameter(Mandatory=$true)][string]$ToolsDir,
+        [Parameter(Mandatory = $true)][hashtable]$ZipMap,
+        [Parameter(Mandatory = $true)][string]$ToolsDir,
         [switch]$DryRun
     )
 
@@ -105,12 +122,12 @@ function Install-Apps-With-Zip {
     foreach ($name in $ZipMap.Keys) {
         $item = $ZipMap[$name]
 
-        $zipUrl     = $item.ZipPath
+        $zipUrl = $item.ZipPath
         $folderName = $item.FolderName
-        $exeName    = $item.ExeName
+        $exeName = $item.ExeName
 
         $installDir = Join-Path $ToolsDir $folderName
-        $zipFile    = Join-Path $env:TEMP "$folderName.zip"
+        $zipFile = Join-Path $env:TEMP "$folderName.zip"
 
         Write-Log INFO "ZIP check: $name"
 
@@ -152,7 +169,7 @@ function Install-Apps-With-Zip {
 # ---------------------------
 function Install-Apps-With-WinGet {
     param(
-        [Parameter(Mandatory=$true)][hashtable]$AppMap,     # 表示名→ID
+        [Parameter(Mandatory = $true)][hashtable]$AppMap,     # 表示名→ID
         [hashtable]$OverrideMap,                            # ID→override 文字列
         [string]$Scope = 'Machine',
         [switch]$DryRun,
@@ -162,28 +179,28 @@ function Install-Apps-With-WinGet {
     )
 
     $scopeArg = @()
-    if ($Scope -in @('Machine','User')) { $scopeArg = @('--scope', $Scope.ToLower()) }
+    if ($Scope -in @('Machine', 'User')) { $scopeArg = @('--scope', $Scope.ToLower()) }
 
     $proxyArg = @()
     if ($Proxy) { $proxyArg = @('--proxy', $Proxy) }
 
     $sourceArg = @()
-    if ($UseWingetSourceOnly) { $sourceArg = @('--source','winget') }
+    if ($UseWingetSourceOnly) { $sourceArg = @('--source', 'winget') }
 
     $wgLogArg = @()
     if ($WithVerboseWingetLogs) { $wgLogArg = @('--verbose-logs') }   # --open-logs は対話が必要なので常用は避ける
 
     # 共通フラグ
-    $WG_ACCEPT = @('--accept-source-agreements','--accept-package-agreements')
+    $WG_ACCEPT = @('--accept-source-agreements', '--accept-package-agreements')
     $WG_NONINT = @('--disable-interactivity')              # list/show/install すべてで付与
     $WG_SILENT = @('-h')                                   # install のみで付与
 
     $failed = @()
 
     # 公式リターンコード（よく使う分のみ）
-    $NO_APPS_FOUND        = -1978335212 # 0x8A150014
-    $DOWNLOAD_FAILED      = -1978335224 # 0x8A150008
-    $NO_APPLICABLE        = -1978335216 # 0x8A150010
+    $NO_APPS_FOUND = -1978335212 # 0x8A150014
+    $DOWNLOAD_FAILED = -1978335224 # 0x8A150008
+    $NO_APPLICABLE = -1978335216 # 0x8A150010
 
     # ユーティリティ: 数値を 0xXXXXXXXX に
     function To-Hex([int]$code) { ('0x{0:X8}' -f ([uint32]([int]$code))) }
@@ -203,9 +220,9 @@ function Install-Apps-With-WinGet {
         $LASTEXITCODE = 0
         # 出力本文で判定する（stderrは捨てる）
         $already = & winget list --id $id --exact `
-                    --disable-interactivity `
-                    --accept-source-agreements --accept-package-agreements `
-                    @sourceArg 2>$null | Out-String
+            --disable-interactivity `
+            --accept-source-agreements --accept-package-agreements `
+            @sourceArg 2>$null | Out-String
         $listCode = $LASTEXITCODE  # ← ここは「致命的エラー時の保険」としてだけ使う
 
         # 1) list 自体が失敗している（ネット断/内部例外など）ときだけコードで扱う
@@ -228,9 +245,9 @@ function Install-Apps-With-WinGet {
         #Write-Log INFO ("[{0}/{1}] not-installed, go install: {2}" -f $index, $total, $name)
 
         $already = & winget list --id $id --exact `
-                    --disable-interactivity `
-                    --accept-source-agreements --accept-package-agreements `
-                    @sourceArg 2>$null | Out-String
+            --disable-interactivity `
+            --accept-source-agreements --accept-package-agreements `
+            @sourceArg 2>$null | Out-String
 
         if ($already -match [regex]::Escape($id)) {
             Write-Log INFO ("[{0}/{1}] detected=installed: {2} -> skip" -f $index, $total, $name)
@@ -241,7 +258,7 @@ function Install-Apps-With-WinGet {
         
 
         # --- install 実行前ログ ---
-        $args = @('install','--id',$id,'--exact') + $WG_SILENT + $WG_ACCEPT + $WG_NONINT + $scopeArg + $proxyArg + $sourceArg + $wgLogArg
+        $args = @('install', '--id', $id, '--exact') + $WG_SILENT + $WG_ACCEPT + $WG_NONINT + $scopeArg + $proxyArg + $sourceArg + $wgLogArg
         if ($OverrideMap.ContainsKey($id) -and $OverrideMap[$id]) {
             $args += @('--override', $OverrideMap[$id])
         }
@@ -260,7 +277,8 @@ function Install-Apps-With-WinGet {
         if ($code -ne 0) {
             Write-Log WARN ("[{0}/{1}] install non-zero: app={2}, dec={3}, hex={4}" -f $index, $total, $name, $code, (To-Hex $code))
             $failed += $name
-        } else {
+        }
+        else {
             Write-Log INFO ("[{0}/{1}] install done: {2}" -f $index, $total, $name)
             Refresh-Path
         }
@@ -270,7 +288,8 @@ function Install-Apps-With-WinGet {
         Write-Log WARN ("FAILED apps: " + ($failed -join ', '))
         Write-Log INFO  ("Winget verbose logs (if enabled) are under: %LOCALAPPDATA%\Packages\Microsoft.DesktopAppInstaller_8wekyb3d8bbwe\LocalState\DiagOutputDir")
         # 上記のログディレクトリは公式トラブルシューティングに記載あり（--verbose-logs / --open-logs）[1](https://learn.microsoft.com/en-us/windows/package-manager/winget/troubleshooting)
-    } else {
+    }
+    else {
         Write-Log INFO ("All apps installed successfully.")
     }
 }
@@ -292,10 +311,12 @@ function Install-RubyGems {
         $has = gem list | Select-String -SimpleMatch "$g "
         if ($has) {
             Write-Log INFO "RubyGems Installed: $g - skip"
-        } else {
+        }
+        else {
             if ($DryRun) {
                 Write-Log INFO "[DryRun] gem install $g"
-            } else {
+            }
+            else {
                 Write-Log INFO "RubyGems Install: $g"
                 gem install $g
             }
@@ -322,10 +343,12 @@ function Install-VSCodeExtensions {
         Write-Log WARN ("インストール: " + ($ext))
         if ($installed -and ($installed -match [regex]::Escape($ext))) {
             Write-Log INFO "VSCode Ext Installed: $ext - skip"
-        } else {
+        }
+        else {
             if ($DryRun) {
                 Write-Log INFO "[DryRun] $codeCmd --install-extension $ext"
-            } else {
+            }
+            else {
                 Write-Log INFO "VSCode Ext Install: $ext"
                 & $codeCmd --install-extension $ext
             }
@@ -353,24 +376,24 @@ if (-not (Ensure-WinGet)) {
 # ※ ID は環境で `winget show <name>` で確認可能
 # 参考: Microsoft Learn（winget 基本コマンド、install/list/upgrade など）
 $AppMap = @{
-    '7-Zip'                    = '7zip.7zip'
-    'Eclipse Temurin 17'       = 'EclipseAdoptium.Temurin.17.JDK'   # Java 17
-    'Python 3'                 = 'Python.Python.3.13'
-    'Ruby'                     = 'RubyInstallerTeam.RubyWithDevKit.3.4'
-    'Strawberry Perl'          = 'StrawberryPerl.StrawberryPerl'
-    'Git'                      = 'Git.Git'
-    'TortoiseGit'              = 'TortoiseGit.TortoiseGit'
-    'Graphviz'                 = 'Graphviz.Graphviz'
-    'Visual Studio Code'       = 'Microsoft.VisualStudioCode'        # scope 指定なし（デフォルト）
-    'WinMerge'                 = 'WinMerge.WinMerge'
-    'Tera Term'                = 'TeraTermProject.teraterm'
-    'CMake'                    = 'Kitware.CMake'
-    'VS 2022 Build Tools'      = 'Microsoft.VisualStudio.2022.BuildTools'
-    'draw.io Desktop'          = 'JGraph.Draw'
-    'Sakura Editor'            = 'sakura-editor.sakura'
-    'inkscape'                 = 'Inkscape.Inkscape'
-    'SQLite'                   = 'SQLite.SQLite'
-    'Nodist'                   = 'Nodist.Nodist'
+    '7-Zip'               = '7zip.7zip'
+    'Eclipse Temurin 17'  = 'EclipseAdoptium.Temurin.17.JDK'   # Java 17
+    'Python 3'            = 'Python.Python.3.13'
+    'Ruby'                = 'RubyInstallerTeam.RubyWithDevKit.3.4'
+    'Strawberry Perl'     = 'StrawberryPerl.StrawberryPerl'
+    'Git'                 = 'Git.Git'
+    'TortoiseGit'         = 'TortoiseGit.TortoiseGit'
+    'Graphviz'            = 'Graphviz.Graphviz'
+    'Visual Studio Code'  = 'Microsoft.VisualStudioCode'        # scope 指定なし（デフォルト）
+    'WinMerge'            = 'WinMerge.WinMerge'
+    'Tera Term'           = 'TeraTermProject.teraterm'
+    'CMake'               = 'Kitware.CMake'
+    'VS 2022 Build Tools' = 'Microsoft.VisualStudio.2022.BuildTools'
+    'draw.io Desktop'     = 'JGraph.Draw'
+    'Sakura Editor'       = 'sakura-editor.sakura'
+    'inkscape'            = 'Inkscape.Inkscape'
+    'SQLite'              = 'SQLite.SQLite'
+    'Nodist'              = 'Nodist.Nodist'
 }
 
 # Zip Installer
@@ -397,7 +420,7 @@ Install-Apps-With-WinGet -AppMap $AppMap -OverrideMap $OverrideMap -Scope $Scope
 # RubyGems（必要に応じて）
 if (-not $NoRubyGems) {
     Write-Log INFO "Rubyをインストール"
-    $RubyGems = @('asciidoctor','asciidoctor-pdf','asciidoctor-pdf-cjk','asciidoctor-diagram','coderay')
+    $RubyGems = @('asciidoctor', 'asciidoctor-pdf', 'asciidoctor-pdf-cjk', 'asciidoctor-diagram', 'coderay')
     Install-RubyGems -Gems $RubyGems -DryRun:$DryRun
 }
 
@@ -457,7 +480,8 @@ try {
 if ($ExportPath) {
     if ($DryRun) {
         Write-Log INFO "[DryRun] winget export -o `"$ExportPath`" --include-versions --accept-source-agreements"
-    } else {
+    }
+    else {
         Write-Log INFO "WinGet スナップショットを書き出し: $ExportPath"
         winget export -o "$ExportPath" --include-versions --accept-source-agreements
         # 参考: export/import で構成の再現（Microsoft Learn）

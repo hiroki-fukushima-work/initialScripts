@@ -1,3 +1,20 @@
+# 管理者権限チェック
+$isAdmin = (
+    New-Object Security.Principal.WindowsPrincipal(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    )
+).IsInRole(
+    [Security.Principal.WindowsBuiltInRole]::Administrator
+)
+
+# 管理者でなければ再起動
+if (-not $isAdmin) {
+    Start-Process powershell `
+        -Verb RunAs `
+        -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    exit
+}
+
 $scriptPath = Split-Path -Path $MyInvocation.MyCommand.Path -Parent
 
 $taskName = "KrokiStarter"
