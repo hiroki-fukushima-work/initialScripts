@@ -425,7 +425,14 @@ if (-not $NoVSCodeExtensions) {
         'mhutchie.git-graph',
         'eamodio.gitlens',
         'GitHub.vscode-pull-request-github',
-        'esbenp.prettier-vscode'
+        'esbenp.prettier-vscode',
+        'GitHub.copilot',
+        'GitHub.copilot-chat',
+        'GitHub.copilot-spec-kit',
+        'ms-windows-ai-studio.windows-ai-studio',
+        'ms-azuretools.vscode-containers',
+        'ms-vscode-remote.remote-containers',
+        'ms-vscode-remote.remote-wsl'
     )
     Install-VSCodeExtensions -Extensions $VSCodeExtensions -DryRun:$DryRun
 }
